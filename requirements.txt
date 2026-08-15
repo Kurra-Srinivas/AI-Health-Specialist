@@ -1,0 +1,29 @@
+# ============================================================
+# AI Health Specialist — Requirements
+# Cloud-compatible (Hugging Face Spaces / Render / Railway)
+# NO pyaudio / sounddevice / speechrecognition
+# (Gradio handles browser-based audio natively)
+# ============================================================
+
+# Web UI
+gradio>=4.44.0
+
+# AI & APIs
+groq>=1.5.0
+deepgram-sdk>=3.0.0
+
+# Free TTS fallback (no API key needed)
+gtts>=2.5.4
+
+# Image processing
+pillow>=10.0.0
+
+# Audio conversion
+pydub>=0.25.1
+
+# Env management
+python-dotenv>=1.2.0
+
+# Utilities
+numpy>=1.24.0
+requests>=2.31.0
