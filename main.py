@@ -870,6 +870,8 @@ with gr.Blocks(title=APP_TITLE) as demo:
             history_state,
             history_html_output,
         ],
+        show_progress="full",
+        concurrency_limit=4,
     )
 
     # Chip click handlers
@@ -888,8 +890,11 @@ with gr.Blocks(title=APP_TITLE) as demo:
 # Launch Configuration
 # ============================================================
 
+# Enable queue BEFORE launch — critical for non-blocking API calls
+# Without this, Groq STT + LLM + TTS (~15s) freezes the entire UI
+demo.queue(max_size=10)
+
 if __name__ == "__main__":
-    # Cloud deployment: bind to 0.0.0.0 and read PORT env var
     port = int(os.environ.get("PORT", 7860))
     server_name = os.environ.get("SERVER_NAME", "0.0.0.0")
 
