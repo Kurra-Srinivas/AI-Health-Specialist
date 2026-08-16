@@ -161,10 +161,48 @@ def _build_prompt(patient_text: str, specialty: str, has_video: bool = False) ->
     )
     if has_video:
         prompt += (
-            "\n\nNote: Patient has uploaded a video. Analyze any visible symptoms, "
-            "movements, or details observed in the footage alongside their description."
+            "\n\nNote: Patient has uploaded a video. The visual frames extracted across the video "
+            "are provided above. Please analyze the visual symptoms and clinical signs shown in these video frames."
         )
     return prompt
+
+
+# ---------------------------------------------------------------------------
+# Video Frame Extraction (Direct visual input for Gemini & VLMs)
+# ---------------------------------------------------------------------------
+
+def extract_video_frames(filepath: str, max_frames: int = 6) -> list[Image.Image]:
+    """
+    Extract evenly-spaced representative frames from a video file as PIL Images.
+    Allows direct, zero-delay visual analysis in Gemini without cloud upload errors.
+    """
+    try:
+        import cv2
+    except ImportError:
+        logger.warning("OpenCV not installed. Cannot extract video frames.")
+        return []
+
+    cap = cv2.VideoCapture(filepath)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        return []
+
+    step = max(1, total_frames // max_frames)
+    frames = []
+    for i in range(0, total_frames, step):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+        ret, frame = cap.read()
+        if ret:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(rgb)
+            img.thumbnail((1024, 1024))
+            frames.append(img)
+        if len(frames) >= max_frames:
+            break
+    cap.release()
+    logger.info(f"Extracted {len(frames)} frames from video: {filepath}")
+    return frames
 
 
 # ---------------------------------------------------------------------------
@@ -219,34 +257,17 @@ def _call_gemini(
         except Exception as exc:
             logger.warning(f"Image load failed ({exc}) — sending text only to Gemini.")
 
-    # ── Video: use Files API (handles large files, multiple formats) ──────
+    # ── Video: extract frames and pass directly as visual PIL images ─────
     elif video_filepath:
         try:
-            size_mb = Path(video_filepath).stat().st_size / (1024 * 1024)
-            logger.info(f"Uploading video to Gemini Files API ({size_mb:.1f} MB)...")
-
-            video_file = genai.upload_file(
-                path=video_filepath,
-                display_name=Path(video_filepath).name,
-            )
-
-            # Wait for Gemini to finish processing the video
-            max_wait = 60  # seconds
-            waited   = 0
-            while video_file.state.name == "PROCESSING" and waited < max_wait:
-                time.sleep(3)
-                waited += 3
-                video_file = genai.get_file(video_file.name)
-                logger.info(f"Video processing... ({waited}s)")
-
-            if video_file.state.name == "FAILED":
-                raise RuntimeError("Gemini video processing failed.")
-
-            parts.append(video_file)
-            logger.info(f"Video ready: {video_file.name}")
-
+            frames = extract_video_frames(video_filepath, max_frames=6)
+            if frames:
+                parts.extend(frames)
+                logger.info(f"Attached {len(frames)} video frames to Gemini request.")
+            else:
+                logger.warning("No video frames could be decoded — proceeding text only.")
         except Exception as exc:
-            logger.warning(f"Video upload failed ({exc}) — sending text only to Gemini.")
+            logger.warning(f"Video frame extraction failed ({exc}) — sending text only to Gemini.")
 
     # ── Text prompt always appended last ─────────────────────────────────
     parts.append(prompt)

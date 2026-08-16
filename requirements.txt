@@ -9,15 +9,16 @@
 gradio>=4.44.0
 
 # AI & APIs
-google-generativeai>=0.8.0    # Google Gemini 2.5 Flash / Flash-Lite (Vision + Multimodal)
+google-generativeai>=0.8.0    # Google Gemini 2.5 Flash (Vision + Video + Multimodal)
 groq>=1.5.0                   # Groq Whisper STT + LLaMA fallback
 deepgram-sdk>=3.0.0           # Neural TTS
 
 # Free TTS fallback (no API key needed)
 gtts>=2.5.4
 
-# Image processing
+# Image & Video processing
 pillow>=10.0.0
+opencv-python-headless>=4.8.0 # High-speed video frame decoding
 
 # Audio conversion
 pydub>=0.25.1
