@@ -1,10 +1,3 @@
-# ============================================================
-# AI Health Specialist — Requirements
-# Cloud-compatible (Hugging Face Spaces / Render / Railway)
-# NO pyaudio / sounddevice / speechrecognition
-# (Gradio handles browser-based audio natively)
-# ============================================================
-
 # Web UI
 gradio>=4.44.0
 
