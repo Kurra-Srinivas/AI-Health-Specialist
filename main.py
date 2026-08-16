@@ -575,9 +575,8 @@ def process_consultation(
     Full consultation pipeline:
       1. Transcribe audio  → Groq Whisper STT
       2. AI Analysis:
-           • Image/Video  → MiniMax VLM  (MiniMax-M3, multimodal)
-           • Text only    → Groq LLM     (LLaMA 4 Scout, fast + free)
-           • Groq fails   → MiniMax LLM  (fallback)
+           • Image/Video/Text → Google Gemini 2.5 Flash (Multimodal VLM)
+           • Fallback         → Groq LLaMA (LLaMA 3.3 70B text / 3.2 11B Vision)
       3. Generate TTS     → Deepgram neural / gTTS fallback
       4. Parse structured response and render UI
       5. Append to session history
@@ -688,7 +687,7 @@ with gr.Blocks(title=APP_TITLE) as demo:
             </div>
           </div>
           <div class="header-badges">
-            <span class="hbadge">🧠 MiniMax VLM</span>
+            <span class="hbadge">✨ Gemini 2.5 Flash</span>
             <span class="hbadge">⚡ Groq AI</span>
             <span class="hbadge">🎙️ Whisper STT</span>
             <span class="hbadge">🔊 Deepgram TTS</span>
@@ -849,7 +848,7 @@ with gr.Blocks(title=APP_TITLE) as demo:
         gr.HTML("""
         <footer class="app-footer">
           <span>🩺 AI Health Specialist </span>
-          <span>Powered by MiniMax VLM · Groq Whisper · Deepgram TTS · gTTS · Gradio</span>
+          <span>Powered by Google Gemini 2.5 Flash · Groq Whisper · Deepgram TTS · gTTS · Gradio</span>
         </footer>
         """)
 

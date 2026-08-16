@@ -13,9 +13,10 @@ short_description: Multi-specialty AI health consultation — Voice + Vision + A
 
 # AI Health Specialist 🩺
 
-> **Multi-specialty AI health consultation platform** built with Groq AI, Deepgram TTS, and Gradio.
+> **Multi-specialty AI health consultation platform** powered by Google Gemini 2.5 Flash, Groq Whisper STT, and Deepgram TTS.
 
 [![Hugging Face](https://img.shields.io/badge/🤗-Hugging%20Face%20Space-blue)](https://huggingface.co/spaces)
+[![Gemini](https://img.shields.io/badge/VLM-Gemini%202.5%20Flash-4285F4)](https://aistudio.google.com)
 [![Groq](https://img.shields.io/badge/Powered%20by-Groq%20AI-orange)](https://groq.com)
 [![Free Tier](https://img.shields.io/badge/APIs-Free%20Tier-green)](.)
 
@@ -26,103 +27,45 @@ short_description: Multi-specialty AI health consultation — Voice + Vision + A
 | Feature | Details |
 |---------|---------|
 | **7 Specialties** | Skin · Dental · Eye · Heart · Bones · Mental Health · General |
-| **Voice Input** | Browser microphone or file upload |
-| **Vision Analysis** | Upload images for visual AI diagnosis |
-| **Text-to-Speech** | Deepgram (high quality) with gTTS fallback (free) |
-| **Severity Badge** | Low / Medium / High urgency indicator |
-| **Consultation History** | Last 5 sessions tracked in-app |
-| **Download Report** | Full structured report per consultation |
-| **Fully Free** | All APIs have free tiers; gTTS requires no key |
+| **Voice Input & STT** | Browser microphone / file upload via **Groq Whisper Large v3** |
+| **Multimodal Vision & Video** | **Google Gemini 2.5 Flash** for image & video diagnosis |
+| **Text-to-Speech** | **Deepgram Aura-2** (neural voice) with **gTTS** fallback (free) |
+| **Severity Badge** | Color-coded Low / Medium / High urgency indicator |
+| **Consultation History** | Last 5 sessions tracked with timestamps |
+| **Download Report** | Export structured medical consultation summaries |
+| **Fully Free Tier Compatible** | All core APIs run seamlessly on generous free tiers |
 
 ---
 
-## 🔑 API Keys Required
+## 🔑 API Keys
 
-| Key | Where to Get | Cost |
-|-----|-------------|------|
-| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | **Free** |
-| `DEEPGRAM_API_KEY` | [console.deepgram.com](https://console.deepgram.com) | **$200 free credits** (optional — app uses gTTS fallback) |
+| Key | Purpose | Where to Get | Cost |
+|-----|---------|-------------|------|
+| `GEMINI_API_KEY` | **Primary VLM** (Text, Image & Video AI Doctor) | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | **Free** |
+| `GROQ_API_KEY` | **Speech-to-Text** (Whisper) & Free Fallback LLM | [console.groq.com](https://console.groq.com) | **Free** |
+| `DEEPGRAM_API_KEY` | **Text-to-Speech** (Neural Doctor Voice) | [console.deepgram.com](https://console.deepgram.com) | **$200 Free Credit** (gTTS fallback if blank) |
 
 ---
 
-## 🚀 Deployment Options
+## 🚀 Local Setup & Running
 
-### 1. Hugging Face Spaces (Recommended — Free)
 ```bash
-# 1. Create a new Space at huggingface.co/new-space
-# 2. Choose Gradio SDK
-# 3. Push this repo
-# 4. Add secrets: GROQ_API_KEY and DEEPGRAM_API_KEY
-git push huggingface main
-```
+# 1. Clone or navigate to folder
+cd ai-skin-specialist
 
-### 2. Render.com (Free Tier)
-```bash
-# 1. Create new Web Service on render.com
-# 2. Connect GitHub repo
-# 3. Build: pip install -r requirements.txt
-# 4. Start: python main.py
-# 5. Add env vars: GROQ_API_KEY, DEEPGRAM_API_KEY
-```
+# 2. Activate virtual environment
+venv\Scripts\activate
 
-### 3. Local Development
-```bash
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # Mac/Linux
-
-# Install dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# Fill in .env file
-cp sample.env .env
-# Edit .env and add your GROQ_API_KEY
+# 4. Fill API keys in .env
+# GEMINI_API_KEY=...
+# GROQ_API_KEY=...
+# DEEPGRAM_API_KEY=...
 
-# Run
+# 5. Start app
 python main.py
-# Open: http://localhost:7860
 ```
 
----
-
-## 🏗️ Architecture
-
-```
-User (Browser)
-    │
-    ├── 🎤 Voice → Gradio Audio Component → audio.wav/mp3
-    │                                          │
-    │                                 Groq Whisper API
-    │                                          │
-    │                              Patient Text (transcribed)
-    │                                          │
-    ├── 🖼️ Image → Gradio Image Component → image.jpg
-    │                                          │
-    │                              Groq Vision LLM (Llama 4)
-    │                         (text + image → structured response)
-    │                                          │
-    │                              Parse: Assessment, Severity,
-    │                              Confidence, Recommendation
-    │                                          │
-    │                         Deepgram TTS / gTTS fallback
-    │                                          │
-    └── 🔊 Doctor Audio + Text Response ◄──────┘
-```
-
----
-
-## ⚠️ Medical Disclaimer
-
-This tool provides **general informational guidance only**. It is **NOT a medical diagnosis** and cannot replace evaluation by a licensed healthcare professional. For emergencies, call **112** (India) or **911** (US) immediately.
-
----
-
-## 📦 Tech Stack
-
-- **Groq** — Whisper STT + LLaMA 4 Vision LLM (free tier)
-- **Deepgram** — Neural TTS (free $200 credit)
-- **gTTS** — Free Google TTS fallback
-- **Gradio** — Web UI framework
-- **Pillow** — Image preprocessing
-- **Python-dotenv** — Environment management
+Open browser at: **http://localhost:7860**

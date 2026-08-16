@@ -3,14 +3,15 @@ brain_of_the_doctor_groq.py
 ----------------------------
 Multi-specialty AI health analysis.
 
-VLM Routing Strategy:
-  • Image / Video provided → MiniMax VLM  (MiniMax-M3, Anthropic-compatible API)
-  • Text only              → Groq LLM     (LLaMA 4 Scout, fast & free)
-  • Groq fails             → MiniMax LLM  (fallback for text-only)
+Architecture:
+  PRIMARY VLM  : Google Gemini 2.5 Flash  — text + image + video
+                 (gemini-2.5-flash-lite by default, free via Google AI Studio)
+  FALLBACK LLM : Groq LLaMA               — free, text-only when Gemini fails
+  STT          : Groq Whisper             — always (voice_of_the_patient.py)
+  TTS          : Deepgram / gTTS          — always (voice_of_the_doctor.py)
 
-APIs:
-  MINIMAX_API_KEY   — MiniMax VLM (image + video + text)
-  GROQ_API_KEY      — Groq Whisper STT + LLaMA 4 text analysis
+Get your free Gemini API key at: https://aistudio.google.com/apikey
+Get your free Groq API key at:   https://console.groq.com
 """
 
 import base64
@@ -18,10 +19,11 @@ import logging
 import mimetypes
 import os
 import re
+import time
 from io import BytesIO
 from pathlib import Path
 
-import anthropic
+import google.generativeai as genai
 from dotenv import load_dotenv
 from groq import Groq
 from PIL import Image
@@ -139,11 +141,11 @@ SPECIALTY_PROMPTS: dict[str, dict] = {
 
 
 # ---------------------------------------------------------------------------
-# Structured Prompt Template (shared by both Groq and MiniMax)
+# Structured Prompt Builder (shared by Gemini and Groq)
 # ---------------------------------------------------------------------------
 
 def _build_prompt(patient_text: str, specialty: str, has_video: bool = False) -> str:
-    """Build the structured output prompt for the LLM."""
+    """Build the exact structured output prompt for the LLM."""
     spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
     prompt = (
         f"You are a {spec['name']} specialist. "
@@ -159,163 +161,129 @@ def _build_prompt(patient_text: str, specialty: str, has_video: bool = False) ->
     )
     if has_video:
         prompt += (
-            "\n\nNote: Patient has uploaded a video. Analyze visible details carefully "
-            "and note what you can observe from the video footage."
+            "\n\nNote: Patient has uploaded a video. Analyze any visible symptoms, "
+            "movements, or details observed in the footage alongside their description."
         )
     return prompt
 
 
 # ---------------------------------------------------------------------------
-# Image Encoding
+# PRIMARY: Gemini 2.5 Flash — text + image + video (Google AI Studio free tier)
 # ---------------------------------------------------------------------------
 
-def _encode_image_for_api(filepath: str, max_size: int = 1024) -> tuple[str, str]:
-    """
-    Resize image and base64-encode it for API submission.
-
-    Returns:
-        (base64_string, media_type)
-    """
-    image = Image.open(filepath)
-    image.thumbnail((max_size, max_size))
-
-    buffer = BytesIO()
-    image.convert("RGB").save(buffer, format="JPEG", quality=82)
-    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    logger.info(f"Image encoded: {len(encoded):,} chars after resize to ≤{max_size}px")
-    return encoded, "image/jpeg"
-
-
-def _encode_video_for_api(filepath: str, max_mb: int = 20) -> tuple[str, str]:
-    """
-    Base64-encode a video file for API submission.
-
-    Returns:
-        (base64_string, media_type)
-
-    Raises:
-        ValueError: If video exceeds max_mb size limit.
-    """
-    file_size_mb = Path(filepath).stat().st_size / (1024 * 1024)
-    if file_size_mb > max_mb:
-        raise ValueError(
-            f"Video file is {file_size_mb:.1f} MB — too large (limit: {max_mb} MB). "
-            f"Please trim or compress the video first."
-        )
-
-    media_type, _ = mimetypes.guess_type(filepath)
-    media_type = media_type or "video/mp4"
-
-    with open(filepath, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("utf-8")
-
-    logger.info(f"Video encoded: {file_size_mb:.1f} MB, type={media_type}")
-    return encoded, media_type
-
-
-# ---------------------------------------------------------------------------
-# MiniMax VLM — Handles image + video + text via Anthropic-compatible API
-# ---------------------------------------------------------------------------
-
-def _call_minimax_vlm(
+def _call_gemini(
     patient_text: str,
     image_filepath: str | None,
     video_filepath: str | None,
     specialty: str,
 ) -> str:
     """
-    Call MiniMax VLM (MiniMax-M3) via Anthropic-compatible API.
-    Supports text, image, and video inputs.
+    PRIMARY provider: Google Gemini 2.5 Flash via google-generativeai SDK.
+
+    Supports:
+      • Text-only analysis
+      • Image analysis (PIL inline — no upload needed)
+      • Video analysis (Files API — handles large videos automatically)
+
+    Free tier: https://aistudio.google.com/apikey
     """
-    minimax_key = os.environ.get("MINIMAX_API_KEY", "").strip()
-    if not minimax_key:
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not gemini_key:
         raise ValueError(
-            "MINIMAX_API_KEY is missing. Please fill it in your .env file.\n"
-            "Sign up at: https://www.minimax.io"
+            "GEMINI_API_KEY is missing. Add it to your .env file.\n"
+            "Get a free key at: https://aistudio.google.com/apikey"
         )
 
-    spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
-    has_video = bool(video_filepath and not image_filepath)
-    prompt = _build_prompt(patient_text, specialty, has_video=has_video)
+    genai.configure(api_key=gemini_key)
 
-    # Build user message content list
-    user_content: list[dict] = []
+    spec       = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
+    has_video  = bool(video_filepath and not image_filepath)
+    prompt     = _build_prompt(patient_text, specialty, has_video=has_video)
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
-    # Attach image if provided
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        system_instruction=spec["system"],
+        generation_config=genai.types.GenerationConfig(
+            temperature=0.4,
+            max_output_tokens=1024,
+        ),
+    )
+
+    # Build the content parts list
+    parts: list = []
+
+    # ── Image: pass as PIL Image (inline, no upload needed) ──────────────
     if image_filepath:
         try:
-            img_data, img_type = _encode_image_for_api(image_filepath)
-            user_content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": img_type,
-                    "data": img_data,
-                },
-            })
-            logger.info("Image attached for MiniMax VLM.")
+            img = Image.open(image_filepath)
+            img.thumbnail((1024, 1024))
+            img = img.convert("RGB")
+            parts.append(img)
+            logger.info(f"Image attached to Gemini request ({img.size}).")
         except Exception as exc:
-            logger.warning(f"Could not encode image: {exc}. Proceeding text-only.")
+            logger.warning(f"Image load failed ({exc}) — sending text only to Gemini.")
 
-    # Attach video if provided (and no image)
+    # ── Video: use Files API (handles large files, multiple formats) ──────
     elif video_filepath:
         try:
-            vid_data, vid_type = _encode_video_for_api(video_filepath)
-            user_content.append({
-                "type": "video",
-                "source": {
-                    "type": "base64",
-                    "media_type": vid_type,
-                    "data": vid_data,
-                },
-            })
-            logger.info("Video attached for MiniMax VLM.")
+            size_mb = Path(video_filepath).stat().st_size / (1024 * 1024)
+            logger.info(f"Uploading video to Gemini Files API ({size_mb:.1f} MB)...")
+
+            video_file = genai.upload_file(
+                path=video_filepath,
+                display_name=Path(video_filepath).name,
+            )
+
+            # Wait for Gemini to finish processing the video
+            max_wait = 60  # seconds
+            waited   = 0
+            while video_file.state.name == "PROCESSING" and waited < max_wait:
+                time.sleep(3)
+                waited += 3
+                video_file = genai.get_file(video_file.name)
+                logger.info(f"Video processing... ({waited}s)")
+
+            if video_file.state.name == "FAILED":
+                raise RuntimeError("Gemini video processing failed.")
+
+            parts.append(video_file)
+            logger.info(f"Video ready: {video_file.name}")
+
         except Exception as exc:
-            logger.warning(f"Could not encode video: {exc}. Proceeding text-only.")
+            logger.warning(f"Video upload failed ({exc}) — sending text only to Gemini.")
 
-    # Always add the text prompt
-    user_content.append({"type": "text", "text": prompt})
+    # ── Text prompt always appended last ─────────────────────────────────
+    parts.append(prompt)
 
-    client = anthropic.Anthropic(
-        api_key=minimax_key,
-        base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/anthropic"),
-    )
-
-    response = client.messages.create(
-        model=os.environ.get("MINIMAX_MODEL", "MiniMax-M3"),
-        max_tokens=1024,
-        temperature=0.4,
-        system=spec["system"],
-        messages=[{"role": "user", "content": user_content}],
-    )
-
-    result = response.content[0].text
-    logger.info(f"MiniMax VLM response: {len(result)} chars")
+    response = model.generate_content(parts)
+    result   = response.text
+    logger.info(f"Gemini {model_name} response: {len(result)} chars")
     return result
 
 
 # ---------------------------------------------------------------------------
-# Groq LLM — Text-only (fast, free tier)
+# FALLBACK: Groq LLM — text-only (free tier, no vision)
 # ---------------------------------------------------------------------------
 
-def _call_groq_text_only(patient_text: str, specialty: str) -> str:
+def _call_groq_text(patient_text: str, specialty: str) -> str:
     """
-    Call Groq LLaMA 4 for text-only consultations (no image/video).
-    Fast and on the free tier.
+    FALLBACK: Groq LLaMA 3.3 70B (text-only, free tier).
+    Used when Gemini is unavailable or API key is missing.
     """
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not groq_key:
         raise ValueError(
-            "GROQ_API_KEY is missing. Please fill it in your .env file.\n"
-            "Get a free key at: https://console.groq.com"
+            "GROQ_API_KEY is missing. Get a free key at: https://console.groq.com"
         )
 
-    spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
+    spec   = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
     prompt = _build_prompt(patient_text, specialty)
+    model  = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-    client = Groq(api_key=groq_key)
+    client   = Groq(api_key=groq_key)
     response = client.chat.completions.create(
-        model=os.environ.get("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
+        model=model,
         max_completion_tokens=1024,
         temperature=0.4,
         messages=[
@@ -325,12 +293,57 @@ def _call_groq_text_only(patient_text: str, specialty: str) -> str:
     )
 
     result = response.choices[0].message.content
-    logger.info(f"Groq LLM response: {len(result)} chars")
+    logger.info(f"Groq fallback ({model}): {len(result)} chars")
     return result
 
 
 # ---------------------------------------------------------------------------
-# Main Router — Public API
+# FALLBACK: Groq Vision — image + text (free tier)
+# ---------------------------------------------------------------------------
+
+def _call_groq_vision(patient_text: str, image_filepath: str, specialty: str) -> str:
+    """
+    FALLBACK vision: Groq LLaMA 3.2 Vision (free tier).
+    Used when Gemini fails and an image was uploaded.
+    """
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not groq_key:
+        raise ValueError("GROQ_API_KEY is missing.")
+
+    spec   = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
+    prompt = _build_prompt(patient_text, specialty)
+    model  = os.environ.get("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
+
+    # Encode image to base64
+    img = Image.open(image_filepath)
+    img.thumbnail((1024, 1024))
+    buf = BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=82)
+    img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    user_content = [
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+        {"type": "text", "text": prompt},
+    ]
+
+    client   = Groq(api_key=groq_key)
+    response = client.chat.completions.create(
+        model=model,
+        max_completion_tokens=1024,
+        temperature=0.4,
+        messages=[
+            {"role": "system", "content": spec["system"]},
+            {"role": "user",   "content": user_content},
+        ],
+    )
+
+    result = response.choices[0].message.content
+    logger.info(f"Groq Vision fallback ({model}): {len(result)} chars")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Public API: brain_of_the_doctor()
 # ---------------------------------------------------------------------------
 
 def brain_of_the_doctor(
@@ -340,35 +353,75 @@ def brain_of_the_doctor(
     specialty: str = "skin",
 ) -> str:
     """
-    Smart routing:
-      - Image or video provided → MiniMax VLM  (full multimodal understanding)
-      - Text only               → Groq LLM     (fast, free)
-      - Groq fails              → MiniMax LLM  (fallback)
+    Analyze patient input using Gemini 2.5 Flash (primary) with Groq as fallback.
+
+    Routing:
+      Image input  → Gemini 2.5 Flash (inline PIL)
+                     └─ fails → Groq Vision (llama-3.2-11b-vision-preview)
+                     └─ fails → Groq text + image note
+      Video input  → Gemini 2.5 Flash (Files API upload)
+                     └─ fails → Groq text + video note
+      Text only    → Gemini 2.5 Flash
+                     └─ fails → Groq LLM (llama-3.3-70b-versatile)
 
     Args:
-        patient_text:    Transcribed patient description.
+        patient_text:    Transcribed patient voice description.
         image_filepath:  Optional path to uploaded image.
         video_filepath:  Optional path to uploaded video.
-        specialty:       One of the keys in SPECIALTY_PROMPTS.
+        specialty:       Key from SPECIALTY_PROMPTS.
 
     Returns:
         Structured doctor response string.
     """
     spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
-    has_visual = bool(image_filepath or video_filepath)
 
-    if has_visual:
-        # Visual input → always use MiniMax VLM
-        logger.info(f"[{spec['name']}] Visual input detected → MiniMax VLM")
-        return _call_minimax_vlm(patient_text, image_filepath, video_filepath, specialty)
-    else:
-        # Text only → try Groq first (faster), fall back to MiniMax
-        logger.info(f"[{spec['name']}] Text-only → Groq LLM")
+    # ── IMAGE ───────────────────────────────────────────────────────────────
+    if image_filepath:
+        logger.info(f"[{spec['name']}] Image → Gemini 2.5 Flash (primary)")
         try:
-            return _call_groq_text_only(patient_text, specialty)
+            return _call_gemini(patient_text, image_filepath, None, specialty)
+        except Exception as gem_err:
+            logger.warning(f"Gemini failed ({gem_err}). Trying Groq Vision...")
+            try:
+                return _call_groq_vision(patient_text, image_filepath, specialty)
+            except Exception as gv_err:
+                logger.warning(f"Groq Vision failed ({gv_err}). Falling back to Groq text.")
+                augmented = (
+                    f"{patient_text}\n\n"
+                    "[Note: Patient uploaded an image that could not be analyzed by the "
+                    "vision model. Please assess based on the verbal description only.]"
+                )
+                return _call_groq_text(augmented, specialty)
+
+    # ── VIDEO ───────────────────────────────────────────────────────────────
+    if video_filepath:
+        logger.info(f"[{spec['name']}] Video → Gemini 2.5 Flash (Files API)")
+        try:
+            return _call_gemini(patient_text, None, video_filepath, specialty)
+        except Exception as gem_err:
+            logger.warning(f"Gemini video failed ({gem_err}). Falling back to Groq text.")
+            augmented = (
+                f"{patient_text}\n\n"
+                "[Note: Patient uploaded a video that could not be analyzed. "
+                "Please assess based on the verbal description only.]"
+            )
+            return _call_groq_text(augmented, specialty)
+
+    # ── TEXT ONLY ───────────────────────────────────────────────────────────
+    logger.info(f"[{spec['name']}] Text only → Gemini 2.5 Flash (primary)")
+    try:
+        return _call_gemini(patient_text, None, None, specialty)
+    except Exception as gem_err:
+        logger.warning(f"Gemini failed ({gem_err}). Falling back to Groq LLM...")
+        try:
+            return _call_groq_text(patient_text, specialty)
         except Exception as groq_err:
-            logger.warning(f"Groq failed: {groq_err}. Falling back to MiniMax LLM...")
-            return _call_minimax_vlm(patient_text, None, None, specialty)
+            raise RuntimeError(
+                f"Both Gemini and Groq failed.\n"
+                f"  Gemini error : {gem_err}\n"
+                f"  Groq error   : {groq_err}\n"
+                "Check your API keys."
+            ) from groq_err
 
 
 # ---------------------------------------------------------------------------
@@ -377,9 +430,9 @@ def brain_of_the_doctor(
 
 def parse_doctor_response(raw: str) -> dict:
     """
-    Parse the structured LLM response into named fields.
+    Parse structured LLM response into named fields.
 
-    Returns a dict with keys:
+    Returns dict with keys:
         assessment, severity, confidence, recommendation, audio_response, full_text
     """
     result = {
@@ -404,7 +457,7 @@ def parse_doctor_response(raw: str) -> dict:
         if match:
             result[key] = match.group(1).strip()
 
-    # Fallbacks
+    # Graceful fallbacks
     if not result["audio_response"]:
         result["audio_response"] = result["assessment"] or raw[:400]
     if not result["assessment"]:
