@@ -573,11 +573,14 @@ def process_consultation(
 ):
     """
     Full consultation pipeline:
-      1. Transcribe audio → Groq Whisper
-      2. Analyze with specialty prompt → Groq LLM
-      3. Generate TTS audio → Deepgram / gTTS
-      4. Parse structured response
-      5. Update history
+      1. Transcribe audio  → Groq Whisper STT
+      2. AI Analysis:
+           • Image/Video  → MiniMax VLM  (MiniMax-M3, multimodal)
+           • Text only    → Groq LLM     (LLaMA 4 Scout, fast + free)
+           • Groq fails   → MiniMax LLM  (fallback)
+      3. Generate TTS     → Deepgram neural / gTTS fallback
+      4. Parse structured response and render UI
+      5. Append to session history
     """
     if not audio_filepath:
         raise gr.Error("Please record or upload your voice description first.")
@@ -685,10 +688,10 @@ with gr.Blocks(title=APP_TITLE) as demo:
             </div>
           </div>
           <div class="header-badges">
+            <span class="hbadge">🧠 MiniMax VLM</span>
             <span class="hbadge">⚡ Groq AI</span>
             <span class="hbadge">🎙️ Whisper STT</span>
             <span class="hbadge">🔊 Deepgram TTS</span>
-            <span class="hbadge">🆓 Free Tier</span>
           </div>
         </header>
         """)
@@ -846,7 +849,7 @@ with gr.Blocks(title=APP_TITLE) as demo:
         gr.HTML("""
         <footer class="app-footer">
           <span>🩺 AI Health Specialist </span>
-          <span>Powered by Groq · Deepgram · gTTS · Gradio</span>
+          <span>Powered by MiniMax VLM · Groq Whisper · Deepgram TTS · gTTS · Gradio</span>
         </footer>
         """)
 

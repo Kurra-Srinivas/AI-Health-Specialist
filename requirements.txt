@@ -9,8 +9,9 @@
 gradio>=4.44.0
 
 # AI & APIs
-groq>=1.5.0
-deepgram-sdk>=3.0.0
+groq>=1.5.0                  # Whisper STT + LLaMA 4 text analysis
+anthropic>=0.40.0             # MiniMax VLM (Anthropic-compatible API)
+deepgram-sdk>=3.0.0           # Neural TTS
 
 # Free TTS fallback (no API key needed)
 gtts>=2.5.4
