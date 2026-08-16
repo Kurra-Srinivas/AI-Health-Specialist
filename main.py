@@ -735,7 +735,7 @@ with gr.Blocks(title=APP_TITLE) as demo:
                     audio_input = gr.Audio(
                         sources=["microphone", "upload"],
                         type="filepath",
-                        label="Your Voice Description",
+                        label="🎤 Your Voice Description (Click Mic → Speak → Click Stop ■)",
                         show_label=True,
                     )
 
@@ -910,8 +910,9 @@ with gr.Blocks(title=APP_TITLE) as demo:
 demo.queue(max_size=10)
 
 if __name__ == "__main__":
+    is_cloud = "PORT" in os.environ or "SPACE_ID" in os.environ or "RENDER" in os.environ
     port = int(os.environ.get("PORT", 7860))
-    server_name = os.environ.get("SERVER_NAME", "0.0.0.0")
+    server_name = os.environ.get("SERVER_NAME", "0.0.0.0" if is_cloud else "127.0.0.1")
 
     logger.info(f"Starting AI Health Specialist on {server_name}:{port}")
     demo.launch(
