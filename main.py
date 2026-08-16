@@ -715,11 +715,13 @@ def process_consultation(
         "specialty": specialty,
     }
     initial_chat = [
-        (
-            None,
-            f"🩺 **Hello!** I am your {spec['name']} specialist. I have completed your initial evaluation ({parsed['severity']} triage severity).\n\n"
-            f"You can ask me any follow-up questions regarding your symptoms, medications, home care precautions, or recovery steps below."
-        )
+        {
+            "role": "assistant",
+            "content": (
+                f"🩺 **Hello!** I am your {spec['name']} specialist. I have completed your initial evaluation ({parsed['severity']} triage severity).\n\n"
+                f"You can ask me any follow-up questions regarding your symptoms, medications, home care precautions, or recovery steps below."
+            ),
+        }
     ]
 
     return (
@@ -987,14 +989,15 @@ with gr.Blocks(title=APP_TITLE) as demo:
 
         spec_key = get_specialty_key(spec_label)
         history_list = list(chat_history or [])
+        history_list.append({"role": "user", "content": user_msg.strip()})
 
         bot_reply = chat_with_doctor_followup(
             user_message=user_msg.strip(),
-            chat_history=history_list,
+            chat_history=history_list[:-1],
             consultation_context=context_dict,
             specialty=spec_key,
         )
-        history_list.append((user_msg.strip(), bot_reply))
+        history_list.append({"role": "assistant", "content": bot_reply})
         return "", history_list, history_list
 
     send_chat_btn.click(
