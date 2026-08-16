@@ -144,26 +144,28 @@ SPECIALTY_PROMPTS: dict[str, dict] = {
 # Structured Prompt Builder (shared by Gemini and Groq)
 # ---------------------------------------------------------------------------
 
-def _build_prompt(patient_text: str, specialty: str, has_video: bool = False) -> str:
-    """Build the exact structured output prompt for the LLM."""
+def _build_prompt(patient_text: str, specialty: str, has_video: bool = False, has_image: bool = False) -> str:
+    """Build the comprehensive clinical output prompt for the LLM."""
     spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
     prompt = (
-        f"You are a {spec['name']} specialist. "
-        "Respond in the EXACT structured format below — no deviations:\n\n"
-        "ASSESSMENT: [2-3 sentences: clinical assessment of what you observe/hear]\n"
+        f"You are {spec['name']} clinical specialist. "
+        "Conduct a comprehensive, compassionate clinical assessment of the patient's presentation. "
+        "Respond in the EXACT structured format below — follow the section headers strictly:\n\n"
+        "ASSESSMENT: [3-4 detailed sentences: clinical evaluation of symptoms, observed visual/movement findings, and pathological possibilities]\n"
         "SEVERITY: [EXACTLY one of: Low | Medium | High]\n"
         "CONFIDENCE: [EXACTLY one of: Low | Medium | High]\n"
-        "RECOMMENDATION: [1-2 sentences: what the patient should do next, including urgency]\n"
-        "AUDIO_RESPONSE: [2-3 sentences: natural spoken response for text-to-speech. "
-        "NO asterisks, NO bullets, NO markdown, NO special characters — plain text only.]\n\n"
-        "Medical context: Patient is self-reporting. This is triage guidance, not a diagnosis.\n\n"
-        f"Patient says: {patient_text}"
+        "DIFFERENTIAL_FACTORS: [2-3 sentences: key potential contributing factors or conditions to consider]\n"
+        "RECOMMENDATION: [2-3 sentences: clear actionable guidance, recommended home care/precautions, and suggested medical specialist follow-up]\n"
+        "RED_FLAGS: [1-2 sentences: specific urgent warning signs that necessitate immediate emergency medical attention]\n"
+        "AUDIO_RESPONSE: [2-3 natural, warm, empathetic spoken sentences for the voice audio player. "
+        "NO asterisks, NO markdown, NO bullet points — pure natural spoken text only.]\n\n"
+        "Medical context: Patient self-triage consultation. Provide thorough clinical reasoning.\n\n"
+        f"Patient Description: {patient_text}"
     )
-    if has_video:
-        prompt += (
-            "\n\nNote: Patient has uploaded a video. The visual frames extracted across the video "
-            "are provided above. Please analyze the visual symptoms and clinical signs shown in these video frames."
-        )
+    if has_image:
+        prompt += "\n\nVisual Context: A clinical photo has been provided. Incorporate specific visual observations (color, margins, texture, swelling, morphology) into the assessment."
+    elif has_video:
+        prompt += "\n\nVisual Context: Video frames are provided above. Analyze dynamic features, physical changes, or movement limitations shown in the footage."
     return prompt
 
 
@@ -236,7 +238,8 @@ def _call_gemini(
 
     spec       = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
     has_video  = bool(video_filepath and not image_filepath)
-    prompt     = _build_prompt(patient_text, specialty, has_video=has_video)
+    has_image  = bool(image_filepath)
+    prompt     = _build_prompt(patient_text, specialty, has_video=has_video, has_image=has_image)
     primary_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     candidate_models = [primary_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     # Deduplicate while preserving order
@@ -343,7 +346,7 @@ def _call_groq_vision(patient_text: str, image_filepath: str, specialty: str) ->
         raise ValueError("GROQ_API_KEY is missing.")
 
     spec   = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
-    prompt = _build_prompt(patient_text, specialty)
+    prompt = _build_prompt(patient_text, specialty, has_image=True)
     model  = os.environ.get("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
 
     # Encode image to base64
@@ -465,23 +468,28 @@ def parse_doctor_response(raw: str) -> dict:
     Parse structured LLM response into named fields.
 
     Returns dict with keys:
-        assessment, severity, confidence, recommendation, audio_response, full_text
+        assessment, severity, confidence, differential_factors,
+        recommendation, red_flags, audio_response, full_text
     """
     result = {
-        "assessment":     "",
-        "severity":       "Medium",
-        "confidence":     "Medium",
-        "recommendation": "",
-        "audio_response": "",
-        "full_text":      raw,
+        "assessment":           "",
+        "severity":             "Medium",
+        "confidence":           "Medium",
+        "differential_factors": "Follow regular clinical precautions.",
+        "recommendation":       "",
+        "red_flags":            "Sudden severe pain, shortness of breath, or rapidly spreading symptoms require urgent emergency care.",
+        "audio_response":       "",
+        "full_text":            raw,
     }
 
     patterns = {
-        "assessment":     r"ASSESSMENT:\s*(.+?)(?=\n[A-Z_]+:|$)",
-        "severity":       r"SEVERITY:\s*(Low|Medium|High)",
-        "confidence":     r"CONFIDENCE:\s*(Low|Medium|High)",
-        "recommendation": r"RECOMMENDATION:\s*(.+?)(?=\n[A-Z_]+:|$)",
-        "audio_response": r"AUDIO_RESPONSE:\s*(.+?)(?=\n[A-Z_]+:|$)",
+        "assessment":           r"ASSESSMENT:\s*(.+?)(?=\n[A-Z_]+:|$)",
+        "severity":             r"SEVERITY:\s*(Low|Medium|High)",
+        "confidence":           r"CONFIDENCE:\s*(Low|Medium|High)",
+        "differential_factors": r"DIFFERENTIAL_FACTORS:\s*(.+?)(?=\n[A-Z_]+:|$)",
+        "recommendation":       r"RECOMMENDATION:\s*(.+?)(?=\n[A-Z_]+:|$)",
+        "red_flags":            r"RED_FLAGS:\s*(.+?)(?=\n[A-Z_]+:|$)",
+        "audio_response":       r"AUDIO_RESPONSE:\s*(.+?)(?=\n[A-Z_]+:|$)",
     }
 
     for key, pattern in patterns.items():

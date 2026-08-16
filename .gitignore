@@ -26,7 +26,7 @@ ENV/
 # uv
 .python-version
 
-# Generated audio files
+# Generated audio and report files
 doctor_response.mp3
 output_gtts.mp3
 patient_voice.wav
@@ -34,6 +34,8 @@ patient_voice_test.mp3
 test-output.mp3
 *.mp3
 *.wav
+audio_responses/
+consultation_reports/
 !sample-image.png
 
 # IDE

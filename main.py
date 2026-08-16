@@ -521,43 +521,84 @@ def render_history_html(history: list) -> str:
     return html
 
 
+REPORTS_DIR = Path(__file__).resolve().parent / "consultation_reports"
+
+
 def generate_report(
     specialty: str,
     patient_text: str,
     assessment: str,
     severity: str,
     confidence: str,
+    differential_factors: str,
     recommendation: str,
-    full_text: str,
-) -> str:
+    red_flags: str,
+    has_image: bool,
+    has_video: bool,
+) -> tuple[str, str]:
+    """
+    Generate a detailed clinical consultation report and save to file for 1-click download.
+    """
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return (
-        f"╔══════════════════════════════════════════╗\n"
-        f"       AI HEALTH SPECIALIST — REPORT\n"
-        f"╚══════════════════════════════════════════╝\n\n"
-        f"Date & Time   : {now}\n"
-        f"Specialty     : {spec['label']} {spec['name']}\n"
-        f"Severity      : {severity}\n"
-        f"AI Confidence : {confidence}\n\n"
-        f"──────────────────────────────────────────\n"
-        f"PATIENT DESCRIPTION\n"
-        f"──────────────────────────────────────────\n"
-        f"{patient_text}\n\n"
-        f"──────────────────────────────────────────\n"
-        f"ASSESSMENT\n"
-        f"──────────────────────────────────────────\n"
-        f"{assessment}\n\n"
-        f"──────────────────────────────────────────\n"
-        f"RECOMMENDATION\n"
-        f"──────────────────────────────────────────\n"
-        f"{recommendation}\n\n"
-        f"══════════════════════════════════════════\n"
-        f"⚠  DISCLAIMER: This is AI-generated triage\n"
-        f"   guidance, NOT a medical diagnosis.\n"
-        f"   Always consult a licensed clinician.\n"
-        f"══════════════════════════════════════════\n"
-    )
+    now_dt = datetime.datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+    ref_id = f"CLINIC-REF-{now_dt.strftime('%Y%m%d-%H%M%S')}"
+
+    modalities = ["Patient Verbal / Text Description"]
+    if has_image:
+        modalities.append("High-Resolution Clinical Photo Analysis")
+    if has_video:
+        modalities.append("Dynamic Video Frame Examination")
+    modality_str = ", ".join(modalities)
+
+    report_content = f"""================================================================================
+                    AI HEALTH CLINICAL CONSULTATION REPORT
+================================================================================
+Reference ID        : {ref_id}
+Date & Time         : {now_str}
+Consulting Service  : {spec['label']} {spec['name']}
+Diagnostic VLM      : Google Gemini 2.5 Flash Multimodal
+Evaluation Modality : {modality_str}
+================================================================================
+
+[ 1. PATIENT PRESENTATION & CHIEF COMPLAINT ]
+--------------------------------------------------------------------------------
+{patient_text}
+
+[ 2. CLINICAL ASSESSMENT & OBSERVATIONS ]
+--------------------------------------------------------------------------------
+• Primary Evaluation:
+  {assessment}
+
+• Triage Severity Level : {severity.upper()}
+• Diagnostic Confidence : {confidence.upper()}
+
+[ 3. DIFFERENTIAL CONSIDERATIONS & CONTRIBUTING FACTORS ]
+--------------------------------------------------------------------------------
+{differential_factors}
+
+[ 4. ACTIONABLE CARE PLAN & CLINICAL RECOMMENDATIONS ]
+--------------------------------------------------------------------------------
+{recommendation}
+
+[ 5. ⚠️ URGENT RED FLAGS & WARNING SIGNS ]
+--------------------------------------------------------------------------------
+{red_flags}
+Note: If any red flag symptoms appear or worsen, seek immediate emergency medical care.
+
+================================================================================
+                         LEGAL & MEDICAL ATTESTATION
+================================================================================
+DISCLAIMER: This document contains AI-generated triage insights based on patient-
+reported data and visual inputs. It does NOT constitute a binding medical diagnosis
+or prescription. Always verify these findings with a licensed clinician or physician.
+================================================================================
+"""
+
+    report_filepath = REPORTS_DIR / f"{ref_id}.txt"
+    report_filepath.write_text(report_content, encoding="utf-8")
+    return report_content, str(report_filepath)
 
 
 # ============================================================
@@ -634,15 +675,18 @@ def process_consultation(
         assessment_text = raw_response
         recommendation_text = "Please consult a licensed clinician for a formal evaluation."
 
-    # Report text
-    report_text = generate_report(
+    # Report text & downloadable file
+    report_text, report_file_path = generate_report(
         specialty=specialty,
         patient_text=patient_text,
         assessment=assessment_text,
         severity=parsed["severity"],
         confidence=parsed["confidence"],
+        differential_factors=parsed.get("differential_factors", "Standard clinical monitoring recommended."),
         recommendation=recommendation_text,
-        full_text=raw_response,
+        red_flags=parsed.get("red_flags", "Seek immediate care if symptoms worsen rapidly."),
+        has_image=bool(image_filepath),
+        has_video=bool(video_filepath),
     )
 
     # Step 5: Update history
@@ -668,6 +712,7 @@ def process_consultation(
         severity_html,        # severity_html_output
         audio_path,           # audio_output
         report_text,          # report_box
+        report_file_path,     # report_file_output
         history,              # history_state
         history_html,         # history_html_output
     )
@@ -832,14 +877,17 @@ with gr.Blocks(title=APP_TITLE) as demo:
                         autoplay=True,
                     )
 
-                    with gr.Accordion("📄 Download Full Report", open=False):
-                        report_box = gr.Textbox(
-                            label="Consultation Report",
-                            lines=18,
+                    with gr.Accordion("📄 Medical Consultation Report & Download", open=True):
+                        report_file_output = gr.File(
+                            label="📥 Download Official Clinical Report (.txt)",
                             interactive=False,
-                            placeholder="Full structured report will appear here after analysis...",
                         )
-                        gr.HTML("<p style='font-size:11px;color:var(--text-muted);margin-top:8px'>Copy the text above and save as a .txt file to keep a record of your consultation.</p>")
+                        report_box = gr.Textbox(
+                            label="Clinical Report Details",
+                            lines=16,
+                            interactive=False,
+                            placeholder="Full structured clinical report will appear here after analysis...",
+                        )
 
         # ── Consultation History ─────────────────────────────
         with gr.Accordion("🕐 Consultation History (Last 5 Sessions)", open=False, elem_classes="card"):
@@ -882,6 +930,7 @@ with gr.Blocks(title=APP_TITLE) as demo:
             severity_html_output,
             audio_output,
             report_box,
+            report_file_output,
             history_state,
             history_html_output,
         ],
