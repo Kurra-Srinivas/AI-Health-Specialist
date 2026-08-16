@@ -1,16 +1,3 @@
----
-title: AI Multimodal Health Specialist
-emoji: 🩺
-colorFrom: blue
-colorTo: purple
-sdk: gradio
-sdk_version: "6.24.0"
-app_file: main.py
-pinned: false
-license: mit
-short_description: Multimodal AI clinical triage — Voice, Vision, Video, Follow-Up Chat & Report Export
----
-
 # 🩺 AI Multimodal Health Specialist & Clinical Triage Platform
 
 > An intelligent, multi-specialty clinical triage platform engineered for low-latency assessment across **Voice (Speech-to-Text)**, **High-Resolution Computer Vision (VLM)**, **Dynamic Video Keyframe Analysis**, **Interactive Follow-Up Chat with Session Memory**, and **Neural Text-to-Speech (TTS)**.
@@ -42,13 +29,13 @@ short_description: Multimodal AI clinical triage — Voice, Vision, Video, Follo
 
 The platform features specialized AI doctor personas with dedicated clinical prompts:
 
-1. **🩺 Dermatology** (*Dr. Anika*) — Skin lesions, rashes, acne, burns, and mole evaluations.
-2. **🦷 Dentistry** (*Dr. Priya*) — Toothaches, gum bleeding, cavities, and oral hygiene.
-3. **👁️ Ophthalmology** (*Dr. Vikram*) — Eye redness, blurriness, floaters, and visual strain.
-4. **🫀 Cardiology** (*Dr. Suresh*) — Palpitations, shortness of breath, chest discomfort triage.
-5. **🦴 Orthopedics** (*Dr. Rajiv*) — Joint pain, swelling, sprains, and mobility recovery.
-6. **🧠 Mental Health** (*Dr. Meera*) — Stress, anxiety, sleep disturbances, and empathetic counseling.
-7. **🏥 General Medicine** (*Dr. Kumar*) — Fever, cold/flu, headaches, fatigue, and general health triage.
+1. **🩺 Dermatology** — Skin lesions, rashes, acne, burns, and mole evaluations.
+2. **🦷 Dentistry** — Toothaches, gum bleeding, cavities, and oral hygiene.
+3. **👁️ Ophthalmology** — Eye redness, blurriness, floaters, and visual strain.
+4. **🫀 Cardiology** — Palpitations, shortness of breath, chest discomfort triage.
+5. **🦴 Orthopedics** — Joint pain, swelling, sprains, and mobility recovery.
+6. **🧠 Mental Health** — Stress, anxiety, sleep disturbances, and empathetic counseling.
+7. **🏥 General Medicine** — Fever, cold/flu, headaches, fatigue, and general health triage.
 
 ---
 
@@ -85,20 +72,6 @@ The platform features specialized AI doctor personas with dedicated clinical pro
 ```
 
 > 📖 **Detailed Architecture Docs**: For complete component breakdown, data schemas, and pipeline diagrams, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
-
----
-
-## 🔑 Required API Keys (100% Free Tiers)
-
-All features run on generous free tiers:
-
-| Provider | Purpose | Where to Get | Cost |
-|---|---|---|---|
-| **Google AI Studio** | Primary Multimodal VLM (`gemini-2.5-flash`) | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | **Free** |
-| **Groq Cloud** | Whisper STT (`whisper-large-v3`) & Fallback LLM | [console.groq.com](https://console.groq.com) | **Free** |
-| **Deepgram** | Neural Text-to-Speech (`aura-2-thalia-en`) | [console.deepgram.com](https://console.deepgram.com) | **$200 Free Credits** *(gTTS fallback if empty)* |
-
----
 
 ## 🚀 Quickstart & Local Setup
 
