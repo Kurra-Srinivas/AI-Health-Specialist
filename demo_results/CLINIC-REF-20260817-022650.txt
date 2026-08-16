@@ -1,0 +1,42 @@
+================================================================================
+                    AI HEALTH CLINICAL CONSULTATION REPORT
+================================================================================
+Reference ID        : CLINIC-REF-20260817-022650
+Date & Time         : 2026-08-17 02:26:50
+Consulting Service  : 🩺 Skin Dermatology
+Diagnostic VLM      : Google Gemini 2.5 Flash Multimodal
+Evaluation Modality : Patient Verbal / Text Description, Dynamic Video Frame Examination
+================================================================================
+
+[ 1. PATIENT PRESENTATION & CHIEF COMPLAINT ]
+--------------------------------------------------------------------------------
+analyze my condition
+
+[ 2. CLINICAL ASSESSMENT & OBSERVATIONS ]
+--------------------------------------------------------------------------------
+• Primary Evaluation:
+  The patient presents with widespread facial inflammatory acne, characterized by numerous erythematous papules, pustules, and likely some deeper nodules, particularly prominent on the cheeks, forehead, and perioral region. The skin appears significantly inflamed and irritated, with multiple active lesions containing purulent material. No dynamic features, physical changes, or movement limitations are discernible from the provided video frames.
+
+• Triage Severity Level : HIGH
+• Diagnostic Confidence : HIGH
+
+[ 3. DIFFERENTIAL CONSIDERATIONS & CONTRIBUTING FACTORS ]
+--------------------------------------------------------------------------------
+Key contributing factors for this level of acne often include hormonal fluctuations (especially in adolescents and young adults), increased sebum production, bacterial overgrowth (Propionibacterium acnes), and follicular hyperkeratinization. Other considerations include genetic predisposition, stress, diet, and certain medications.
+
+[ 4. ACTIONABLE CARE PLAN & CLINICAL RECOMMENDATIONS ]
+--------------------------------------------------------------------------------
+Given the severity and inflammatory nature of your acne, I strongly recommend scheduling an appointment with a board-certified dermatologist as soon as possible. They can conduct a thorough examination, discuss your medical history, and prescribe appropriate treatments, which may include oral medications (like antibiotics or isotretinoin), topical retinoids, or other advanced therapies. In the meantime, continue with a gentle, non-comedogenic skincare routine and absolutely avoid picking or squeezing lesions to prevent scarring and further inflammation.
+
+[ 5. ⚠️ URGENT RED FLAGS & WARNING SIGNS ]
+--------------------------------------------------------------------------------
+If you develop a fever, rapidly spreading redness, severe pain, or large, tender cysts that are increasing in size, seek immediate medical attention as these could indicate a more serious infection.
+Note: If any red flag symptoms appear or worsen, seek immediate emergency medical care.
+
+================================================================================
+                         LEGAL & MEDICAL ATTESTATION
+================================================================================
+DISCLAIMER: This document contains AI-generated triage insights based on patient-
+reported data and visual inputs. It does NOT constitute a binding medical diagnosis
+or prescription. Always verify these findings with a licensed clinician or physician.
+================================================================================
