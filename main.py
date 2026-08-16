@@ -917,7 +917,6 @@ with gr.Blocks(title=APP_TITLE) as demo:
                         chatbot = gr.Chatbot(
                             label="Doctor Follow-Up Consultation",
                             height=280,
-                            show_copy_button=True,
                         )
                         with gr.Row():
                             chat_input = gr.Textbox(
