@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from brain_of_the_doctor_groq import (
     SPECIALTY_PROMPTS,
     brain_of_the_doctor,
+    chat_with_doctor_followup,
     parse_doctor_response,
 )
 from voice_of_the_doctor import convert_text_to_doctor_audio
@@ -705,6 +706,22 @@ def process_consultation(
 
     audio_path = str(doctor_audio) if doctor_audio else None
 
+    # Step 6: Initialize interactive follow-up chat with case context
+    consultation_context = {
+        "patient_text": patient_text,
+        "assessment": assessment_text,
+        "severity": parsed["severity"],
+        "recommendation": recommendation_text,
+        "specialty": specialty,
+    }
+    initial_chat = [
+        (
+            None,
+            f"🩺 **Hello!** I am your {spec['name']} specialist. I have completed your initial evaluation ({parsed['severity']} triage severity).\n\n"
+            f"You can ask me any follow-up questions regarding your symptoms, medications, home care precautions, or recovery steps below."
+        )
+    ]
+
     return (
         patient_text,         # transcript_box
         assessment_text,      # assessment_box
@@ -715,6 +732,9 @@ def process_consultation(
         report_file_path,     # report_file_output
         history,              # history_state
         history_html,         # history_html_output
+        initial_chat,         # chatbot
+        initial_chat,         # chat_history_state
+        consultation_context, # consultation_context_state
     )
 
 
@@ -732,6 +752,8 @@ specialty_label_to_key = {v["label"]: k for k, v in SPECIALTY_PROMPTS.items()}
 
 with gr.Blocks(title=APP_TITLE) as demo:
     history_state = gr.State([])
+    chat_history_state = gr.State([])
+    consultation_context_state = gr.State({})
 
     with gr.Column(elem_classes="app-shell"):
         # ── Header ──────────────────────────────────────────
@@ -889,6 +911,24 @@ with gr.Blocks(title=APP_TITLE) as demo:
                             placeholder="Full structured clinical report will appear here after analysis...",
                         )
 
+                    # ── Follow-Up Chat Accordion ─────────────────────────────
+                    with gr.Accordion("💬 Interactive Follow-Up Chat with Doctor (Session Memory)", open=True):
+                        gr.HTML("<p style='font-size:12px;color:var(--text-label);margin-bottom:8px;'>Ask follow-up questions about medications, precautions, or new symptoms. Your case history and diagnostic findings are remembered.</p>")
+                        chatbot = gr.Chatbot(
+                            label="Doctor Follow-Up Consultation",
+                            height=280,
+                            show_copy_button=True,
+                        )
+                        with gr.Row():
+                            chat_input = gr.Textbox(
+                                placeholder="Ask a follow-up question (e.g. Is this contagious? What medicines can I take?)...",
+                                lines=1,
+                                scale=8,
+                                show_label=False,
+                            )
+                            send_chat_btn = gr.Button("💬 Send", variant="primary", scale=2)
+                            clear_chat_btn = gr.Button("🗑️ Clear", variant="secondary", scale=1)
+
         # ── Consultation History ─────────────────────────────
         with gr.Accordion("🕐 Consultation History (Last 5 Sessions)", open=False, elem_classes="card"):
             history_html_output = gr.HTML("""
@@ -933,9 +973,48 @@ with gr.Blocks(title=APP_TITLE) as demo:
             report_file_output,
             history_state,
             history_html_output,
+            chatbot,
+            chat_history_state,
+            consultation_context_state,
         ],
         show_progress="full",
         concurrency_limit=4,
+    )
+
+    # ── Chat Event Handlers ──────────────────────────────────
+    def handle_followup_chat(user_msg, chat_history, context_dict, spec_label):
+        if not user_msg or not user_msg.strip():
+            return "", chat_history, chat_history
+
+        spec_key = get_specialty_key(spec_label)
+        history_list = list(chat_history or [])
+
+        bot_reply = chat_with_doctor_followup(
+            user_message=user_msg.strip(),
+            chat_history=history_list,
+            consultation_context=context_dict,
+            specialty=spec_key,
+        )
+        history_list.append((user_msg.strip(), bot_reply))
+        return "", history_list, history_list
+
+    send_chat_btn.click(
+        fn=handle_followup_chat,
+        inputs=[chat_input, chat_history_state, consultation_context_state, specialty_radio],
+        outputs=[chat_input, chatbot, chat_history_state],
+        show_progress="minimal",
+    )
+
+    chat_input.submit(
+        fn=handle_followup_chat,
+        inputs=[chat_input, chat_history_state, consultation_context_state, specialty_radio],
+        outputs=[chat_input, chatbot, chat_history_state],
+        show_progress="minimal",
+    )
+
+    clear_chat_btn.click(
+        fn=lambda: ([], []),
+        outputs=[chatbot, chat_history_state],
     )
 
     # Chip click handlers

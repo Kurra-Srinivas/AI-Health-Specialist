@@ -504,3 +504,118 @@ def parse_doctor_response(raw: str) -> dict:
         result["assessment"] = raw
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Multi-Turn Interactive Follow-Up Chat
+# ---------------------------------------------------------------------------
+
+def chat_with_doctor_followup(
+    user_message: str,
+    chat_history: list,
+    consultation_context: dict | None = None,
+    specialty: str = "general",
+) -> str:
+    """
+    Handle multi-turn conversational follow-up questions with the AI Doctor persona.
+    Preserves consultation context (patient symptoms, visual assessment, severity)
+    across all follow-up Q&A turns.
+    """
+    spec = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
+    doctor_system = spec["system"]
+
+    # Construct contextual system grounding
+    context_intro = (
+        f"You are {spec['name']} clinical specialist engaging in an interactive follow-up consultation with your patient.\n"
+        f"Clinical persona guidelines: {doctor_system}\n\n"
+        "Guidelines for follow-up conversation:\n"
+        "- Answer the patient's specific question directly, empathetically, and clearly.\n"
+        "- Ground your advice in the initial case history, visual observations, and recommendations.\n"
+        "- If the patient asks about medications, suggest standard safe OTC options or home care while reminding them to verify with a doctor.\n"
+        "- Reiterate emergency warning signs if their new symptoms sound concerning.\n"
+        "- Keep responses concise (3-5 sentences) and accessible to patients.\n"
+    )
+
+    if consultation_context:
+        p_desc = consultation_context.get("patient_text", "Not specified")
+        c_assess = consultation_context.get("assessment", "Initial triage completed")
+        c_sev = consultation_context.get("severity", "Medium")
+        c_recom = consultation_context.get("recommendation", "")
+        context_intro += (
+            f"\n[Case Context Summary]:\n"
+            f"• Patient Chief Complaint: {p_desc}\n"
+            f"• Clinical Assessment: {c_assess}\n"
+            f"• Triage Severity: {c_sev}\n"
+            f"• Initial Care Plan: {c_recom}\n"
+        )
+
+    # 1. Try Gemini 2.5 Flash with multi-turn history
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        try:
+            genai.configure(api_key=gemini_key)
+            model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+            candidate_models = [model_name, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+            seen = set()
+            models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+
+            formatted_history = []
+            for item in (chat_history or []):
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    u_msg, b_msg = item
+                    if u_msg:
+                        formatted_history.append({"role": "user", "parts": [str(u_msg)]})
+                    if b_msg:
+                        formatted_history.append({"role": "model", "parts": [str(b_msg)]})
+                elif isinstance(item, dict):
+                    role = "user" if item.get("role") == "user" else "model"
+                    content = item.get("content", "")
+                    if content:
+                        formatted_history.append({"role": role, "parts": [str(content)]})
+
+            for m_name in models_to_try:
+                try:
+                    model = genai.GenerativeModel(
+                        model_name=m_name,
+                        system_instruction=context_intro,
+                        generation_config=genai.types.GenerationConfig(
+                            temperature=0.5,
+                            max_output_tokens=600,
+                        ),
+                    )
+                    chat_session = model.start_chat(history=formatted_history)
+                    resp = chat_session.send_message(user_message)
+                    return resp.text.strip()
+                except Exception as e_m:
+                    logger.warning(f"Gemini chat {m_name} failed: {e_m}")
+        except Exception as gem_err:
+            logger.warning(f"Gemini chat failed: {gem_err}. Trying Groq fallback...")
+
+    # 2. Fallback to Groq LLaMA
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if groq_key:
+        try:
+            client = Groq(api_key=groq_key)
+            messages = [{"role": "system", "content": context_intro}]
+            for item in (chat_history or []):
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    u_msg, b_msg = item
+                    if u_msg:
+                        messages.append({"role": "user", "content": str(u_msg)})
+                    if b_msg:
+                        messages.append({"role": "assistant", "content": str(b_msg)})
+                elif isinstance(item, dict):
+                    messages.append({"role": item.get("role", "user"), "content": str(item.get("content", ""))})
+            messages.append({"role": "user", "content": user_message})
+
+            resp = client.chat.completions.create(
+                model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                messages=messages,
+                max_completion_tokens=600,
+                temperature=0.5,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as groq_err:
+            logger.error(f"Groq chat fallback failed: {groq_err}")
+
+    return "I am reviewing your query. Please consult with a healthcare professional for specific clinical advice."
