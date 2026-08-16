@@ -566,6 +566,7 @@ def generate_report(
 
 def process_consultation(
     audio_filepath,
+    text_desc: str,
     image_filepath,
     video_filepath,
     specialty: str,
@@ -573,26 +574,38 @@ def process_consultation(
 ):
     """
     Full consultation pipeline:
-      1. Transcribe audio  → Groq Whisper STT
-      2. AI Analysis:
+      1. Transcribe audio  → Groq Whisper STT (if voice provided)
+      2. Combine voice transcription + typed symptom text
+      3. AI Analysis:
            • Image/Video/Text → Google Gemini 2.5 Flash (Multimodal VLM)
            • Fallback         → Groq LLaMA (LLaMA 3.3 70B text / 3.2 11B Vision)
-      3. Generate TTS     → Deepgram neural / gTTS fallback
-      4. Parse structured response and render UI
-      5. Append to session history
+      4. Generate TTS     → Deepgram neural / gTTS fallback
+      5. Parse structured response and render UI
+      6. Append to session history
     """
-    if not audio_filepath:
-        raise gr.Error("Please record or upload your voice description first.")
+    patient_text = ""
+
+    # Step 1: Transcribe audio if provided
+    if audio_filepath:
+        try:
+            patient_text = transcribe_patient_voice(audio_filepath)
+            if patient_text:
+                logger.info(f"Transcribed: {patient_text[:60]}...")
+        except Exception as exc:
+            logger.warning(f"Voice transcription error: {exc}")
+
+    # Step 2: Merge or fallback to typed symptom text
+    typed_text = (text_desc or "").strip()
+    if patient_text and typed_text and typed_text.lower() not in patient_text.lower():
+        patient_text = f"{patient_text}. Additional symptoms: {typed_text}"
+    elif not patient_text and typed_text:
+        patient_text = typed_text
+
+    if not patient_text:
+        raise gr.Error("Please speak into the microphone or type your symptoms in the text box.")
 
     try:
-        # Step 1: Transcribe
-        patient_text = transcribe_patient_voice(audio_filepath)
-        logger.info(f"Transcribed: {patient_text[:60]}...")
-    except Exception as exc:
-        raise gr.Error(f"Transcription failed: {exc}")
-
-    try:
-        # Step 2: AI Analysis
+        # Step 3: AI Analysis
         raw_response = brain_of_the_doctor(
             patient_text=patient_text,
             image_filepath=image_filepath,
@@ -751,10 +764,10 @@ with gr.Blocks(title=APP_TITLE) as demo:
                         chip6 = gr.Button("😟 Anxiety / Stress",  variant="secondary", size="sm")
 
                     chip_hint = gr.Textbox(
-                        label="Symptom Hint (read this aloud)",
-                        placeholder="Click a chip above or type a symptom...",
+                        label="Symptom Description / Spoken Notes",
+                        placeholder="Click a chip above, type your symptoms, or speak into the mic...",
                         interactive=True,
-                        lines=1,
+                        lines=2,
                     )
 
                     gr.HTML('<hr class="section-divider">')
@@ -858,10 +871,10 @@ with gr.Blocks(title=APP_TITLE) as demo:
         return specialty_label_to_key.get(label, "skin")
 
     analyze_btn.click(
-        fn=lambda audio, img, vid, spec_label, hist: process_consultation(
-            audio, img, vid, get_specialty_key(spec_label), hist
+        fn=lambda audio, txt, img, vid, spec_label, hist: process_consultation(
+            audio, txt, img, vid, get_specialty_key(spec_label), hist
         ),
-        inputs=[audio_input, image_input, video_input, specialty_radio, history_state],
+        inputs=[audio_input, chip_hint, image_input, video_input, specialty_radio, history_state],
         outputs=[
             transcript_box,
             assessment_box,

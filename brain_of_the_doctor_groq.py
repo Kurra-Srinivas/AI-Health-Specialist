@@ -199,16 +199,11 @@ def _call_gemini(
     spec       = SPECIALTY_PROMPTS.get(specialty, SPECIALTY_PROMPTS["general"])
     has_video  = bool(video_filepath and not image_filepath)
     prompt     = _build_prompt(patient_text, specialty, has_video=has_video)
-    model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
-
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=spec["system"],
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.4,
-            max_output_tokens=1024,
-        ),
-    )
+    primary_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    candidate_models = [primary_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    # Deduplicate while preserving order
+    seen = set()
+    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
 
     # Build the content parts list
     parts: list = []
@@ -256,10 +251,26 @@ def _call_gemini(
     # ── Text prompt always appended last ─────────────────────────────────
     parts.append(prompt)
 
-    response = model.generate_content(parts)
-    result   = response.text
-    logger.info(f"Gemini {model_name} response: {len(result)} chars")
-    return result
+    last_err = None
+    for m_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(
+                model_name=m_name,
+                system_instruction=spec["system"],
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.4,
+                    max_output_tokens=1024,
+                ),
+            )
+            response = model.generate_content(parts)
+            result = response.text
+            logger.info(f"Gemini {m_name} response: {len(result)} chars")
+            return result
+        except Exception as err:
+            logger.warning(f"Gemini model {m_name} failed: {err}. Trying next candidate...")
+            last_err = err
+
+    raise last_err or RuntimeError("All Gemini model candidates failed.")
 
 
 # ---------------------------------------------------------------------------
